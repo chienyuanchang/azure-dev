@@ -455,7 +455,8 @@ func printA2AResult(respBody []byte, agentName string, version string) {
 
 // extractA2AText pulls the user-visible reply text out of a JSON-RPC A2A
 // response. In 0.3, `result` is a Message or Task; in 1.0 it wraps `message`
-// or `task`. Tasks carry text in status.message, artifacts, or history.
+// or `task`. Task artifacts are preferred over status messages such as "Done";
+// status.message and history supply fallback text when there are no text artifacts.
 // Returns "" when no text can be found, signaling the caller to fall back to
 // printing the JSON body.
 func extractA2AText(respBody []byte, version string) string {
@@ -487,16 +488,8 @@ func extractA2AText(respBody []byte, version string) string {
 		return text
 	}
 
-	// Task result: status.message.parts.
-	if status, ok := result["status"].(map[string]any); ok {
-		if msg, ok := status["message"].(map[string]any); ok {
-			if text := a2aTextFromParts(msg["parts"]); text != "" {
-				return text
-			}
-		}
-	}
-
-	// Task result: artifacts[].parts.
+	// Task artifacts contain the answer; status messages may only say "Done".
+	// Prefer artifacts[].parts over task lifecycle messages.
 	if artifacts, ok := result["artifacts"].([]any); ok {
 		var parts []string
 		for _, art := range artifacts {
@@ -510,6 +503,15 @@ func extractA2AText(respBody []byte, version string) string {
 		}
 		if joined := strings.Join(parts, "\n"); joined != "" {
 			return joined
+		}
+	}
+
+	// Task result fallback: status.message.parts.
+	if status, ok := result["status"].(map[string]any); ok {
+		if msg, ok := status["message"].(map[string]any); ok {
+			if text := a2aTextFromParts(msg["parts"]); text != "" {
+				return text
+			}
 		}
 	}
 
